@@ -41,7 +41,32 @@ def get_embedding(text):
     embeddings = list(embedding_model.embed([text]))
     return embeddings[0].tolist()
 
-def search_ncert(question, class_num, subject, top_k=3):
+def clean_context_retrieval(retrieved_chunks):
+    """
+    Analyzes and filters out database chunks that are heavily weighted 
+    with quiz questions, options, or blank fills rather than narrative/lesson content.
+    """
+    valid_chunks = []
+    
+    for chunk in retrieved_chunks:
+        content = chunk.get("content", "")
+        if not content:
+            continue
+            
+        # Count the presence of textbook exercise markers
+        blank_lines = content.count("_____")
+        option_markers = sum([content.count(f"({char})") for char in ['i', 'ii', 'iii', 'iv', 'a', 'b', 'c', 'd']])
+        mcq_choices = sum([content.count(f"{char}. ") for char in ['A', 'B', 'C', 'D']])
+        
+        # If the chunk has multiple fills, options, or question grids, skip it
+        if blank_lines > 2 or (option_markers + mcq_choices) > 3:
+            continue
+            
+        valid_chunks.append(chunk)
+        
+    return valid_chunks
+
+def search_ncert(question, class_num, subject, top_k=5):
     question_embedding = get_embedding(question)
     result = supabase.rpc("match_chunks", {
         "query_embedding": question_embedding,
@@ -49,9 +74,11 @@ def search_ncert(question, class_num, subject, top_k=3):
         "filter_class": class_num,
         "filter_subject": subject
     }).execute()
-    return result.data
+    
+    # Filter out back-of-chapter quiz sheets dynamically
+    return clean_context_retrieval(result.data)
 
-def search_marking_scheme(question, class_num, top_k=2):
+def search_marking_scheme(question, class_num, top_k=4):
     question_embedding = get_embedding(question)
     if class_num in [11, 12]:
         table_function = "match_marking_senior"
@@ -62,13 +89,17 @@ def search_marking_scheme(question, class_num, top_k=2):
         "match_count": top_k,
         "filter_class": class_num
     }).execute()
-    return result.data
+    
+    # Run marking scheme segments through the same safety filter
+    return clean_context_retrieval(result.data)
 
 def score_answer(question, student_answer, class_num, subject):
     ncert_chunks = search_ncert(question, class_num, subject)
-    ncert_context = "\n\n".join([r['content'] for r in ncert_chunks])
+    # Take up to the top 2 cleanest elements to prevent exceeding context payload caps
+    ncert_context = "\n\n".join([r['content'] for r in ncert_chunks[:2]])
+    
     ms_chunks = search_marking_scheme(question, class_num)
-    ms_context = "\n\n".join([r['content'] for r in ms_chunks])
+    ms_context = "\n\n".join([r['content'] for r in ms_chunks[:2]])
 
     prompt = f"""You are a strict CBSE examiner for Class {class_num} {subject}.
 
