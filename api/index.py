@@ -2,11 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client
+from sentence_transformers import SentenceTransformer
 from openai import OpenAI
 import os
 
 app = FastAPI()
 
+# Allow requests from your frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://marksmind.in", "http://localhost:3000"],
@@ -14,13 +16,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Load environment variables
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 
+# Initialize clients
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-# OpenRouter for both embeddings and scoring
+embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=OPENROUTER_API_KEY
@@ -28,21 +31,15 @@ client = OpenAI(
 
 MODEL_ID = "openai/gpt-4o-mini:free"
 
+# Request body structure
 class AnswerRequest(BaseModel):
     question: str
     student_answer: str
     class_num: int
     subject: str
 
-def get_embedding(text):
-    response = client.embeddings.create(
-        model="text-embedding-3-small",
-        input=text
-    )
-    return response.data[0].embedding
-
 def search_ncert(question, class_num, subject, top_k=3):
-    question_embedding = get_embedding(question)
+    question_embedding = embedding_model.encode(question).tolist()
     result = supabase.rpc("match_chunks", {
         "query_embedding": question_embedding,
         "match_count": top_k,
@@ -52,11 +49,14 @@ def search_ncert(question, class_num, subject, top_k=3):
     return result.data
 
 def search_marking_scheme(question, class_num, top_k=2):
-    question_embedding = get_embedding(question)
+    question_embedding = embedding_model.encode(question).tolist()
+    
+    # Choose correct table based on class
     if class_num in [11, 12]:
         table_function = "match_marking_senior"
     else:
         table_function = "match_marking_secondary"
+    
     result = supabase.rpc(table_function, {
         "query_embedding": question_embedding,
         "match_count": top_k,
@@ -65,11 +65,14 @@ def search_marking_scheme(question, class_num, top_k=2):
     return result.data
 
 def score_answer(question, student_answer, class_num, subject):
+    # Get NCERT context
     ncert_chunks = search_ncert(question, class_num, subject)
     ncert_context = "\n\n".join([r['content'] for r in ncert_chunks])
+    
+    # Get marking scheme context
     ms_chunks = search_marking_scheme(question, class_num)
     ms_context = "\n\n".join([r['content'] for r in ms_chunks])
-
+    
     prompt = f"""You are a strict CBSE examiner for Class {class_num} {subject}.
 
 NCERT Textbook Content:
