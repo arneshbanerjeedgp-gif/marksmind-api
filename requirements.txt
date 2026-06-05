@@ -1,8 +1,7 @@
 fastapi
 uvicorn
 supabase
-sentence-transformers
 openai
 numpy
 python-dotenv
-torch --index-url https://download.pytorch.org/whl/cpu
+requests
