@@ -4,4 +4,4 @@ supabase
 openai
 numpy
 python-dotenv
-requests
+fastembed
