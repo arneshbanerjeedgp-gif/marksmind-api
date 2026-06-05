@@ -1,7 +1,6 @@
 fastapi
 uvicorn
 supabase
-sentence-transformers
 openai
 numpy
 python-dotenv
