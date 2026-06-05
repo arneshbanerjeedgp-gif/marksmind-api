@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from supabase import create_client
 from openai import OpenAI
-import requests
+from fastembed import TextEmbedding
 import os
 
 app = FastAPI()
@@ -18,7 +18,6 @@ app.add_middleware(
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
-HF_TOKEN = os.environ.get("HF_TOKEN")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -29,6 +28,9 @@ client = OpenAI(
 
 MODEL_ID = "openai/gpt-4o-mini:free"
 
+# Load embedding model once at startup
+embedding_model = TextEmbedding("BAAI/bge-small-en-v1.5")
+
 class AnswerRequest(BaseModel):
     question: str
     student_answer: str
@@ -36,18 +38,8 @@ class AnswerRequest(BaseModel):
     subject: str
 
 def get_embedding(text):
-    api_url = "https://api-inference.huggingface.co/pipeline/feature-extraction/sentence-transformers/all-MiniLM-L6-v2"
-    headers = {"Authorization": f"Bearer {HF_TOKEN}"}
-    response = requests.post(
-        api_url,
-        headers=headers,
-        json={"inputs": text, "options": {"wait_for_model": True}}
-    )
-    embedding = response.json()
-    # HF returns nested list for single input, flatten it
-    if isinstance(embedding[0], list):
-        embedding = embedding[0]
-    return embedding
+    embeddings = list(embedding_model.embed([text]))
+    return embeddings[0].tolist()
 
 def search_ncert(question, class_num, subject, top_k=3):
     question_embedding = get_embedding(question)
