@@ -29,7 +29,7 @@ client = OpenAI(
 )
 
 # Using the ultra-fast Llama 3 model to avoid traffic jams
-MODEL_ID = "meta-llama/llama-3-8b-instruct:free"
+MODEL_ID = "google/gemma-4-31b-it:free"
 
 # Load embedding model once at startup
 embedding_model = TextEmbedding("BAAI/bge-small-en-v1.5")
