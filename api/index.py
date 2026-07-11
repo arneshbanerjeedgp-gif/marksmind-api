@@ -6,11 +6,12 @@ from openai import OpenAI
 from fastembed import TextEmbedding
 import os
 import time
+
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # This allows Google AI Studio to successfully connect!
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -27,7 +28,8 @@ client = OpenAI(
     api_key=OPENROUTER_API_KEY
 )
 
-MODEL_ID = "google/gemma-4-31b-it:free"
+# Using the ultra-fast Llama 3 model to avoid traffic jams
+MODEL_ID = "meta-llama/llama-3-8b-instruct:free"
 
 # Load embedding model once at startup
 embedding_model = TextEmbedding("BAAI/bge-small-en-v1.5")
@@ -54,12 +56,10 @@ def clean_context_retrieval(retrieved_chunks):
         if not content:
             continue
             
-        # Count the presence of textbook exercise markers
         blank_lines = content.count("_____")
         option_markers = sum([content.count(f"({char})") for char in ['i', 'ii', 'iii', 'iv', 'a', 'b', 'c', 'd']])
         mcq_choices = sum([content.count(f"{char}. ") for char in ['A', 'B', 'C', 'D']])
         
-        # If the chunk has multiple fills, options, or question grids, skip it
         if blank_lines > 2 or (option_markers + mcq_choices) > 3:
             continue
             
@@ -76,7 +76,6 @@ def search_ncert(question, class_num, subject, top_k=5):
         "filter_subject": subject
     }).execute()
     
-    # Filter out back-of-chapter quiz sheets dynamically
     return clean_context_retrieval(result.data)
 
 def search_marking_scheme(question, class_num, top_k=4):
@@ -91,22 +90,21 @@ def search_marking_scheme(question, class_num, top_k=4):
         "filter_class": class_num
     }).execute()
     
-    # Run marking scheme segments through the same safety filter
     return clean_context_retrieval(result.data)
 
 def score_answer(question, student_answer, class_num, subject):
     ncert_chunks = search_ncert(question, class_num, subject)
-    # Take up to the top 2 cleanest elements to prevent exceeding context payload caps
-    ncert_context = "\n\n".join([r['content'] for r in ncert_chunks[:2]])
+    # Reduced to 1 chunk for maximum speed
+    ncert_context = "\n\n".join([r['content'] for r in ncert_chunks[:1]])
     
     ms_chunks = search_marking_scheme(question, class_num)
-    ms_context = "\n\n".join([r['content'] for r in ms_chunks[:2]])
+    ms_context = "\n\n".join([r['content'] for r in ms_chunks[:1]])
 
-   response = client.chat.completions.create(
-        model=MODEL_ID,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
+    prompt = f"""You are a strict CBSE examiner for Class {class_num} {subject}.
+
+NCERT Textbook Content:
+{ncert_context}
+
 Official CBSE Marking Scheme:
 {ms_context}
 
@@ -128,16 +126,17 @@ ADVICE: (one line on what to fix)"""
             response = client.chat.completions.create(
                 model=MODEL_ID,
                 messages=[{"role": "user", "content": prompt}],
-                timeout=15 # Prevents hanging
+                timeout=15 
             )
             return response.choices[0].message.content
         except Exception as e:
             print(f"⚠️ OpenRouter Error on attempt {attempt + 1}: {str(e)}")
             if attempt < max_retries - 1:
                 print("Retrying in 2 seconds...")
-                time.sleep(2)
+                time.sleep(2) 
             else:
-                return "MARKS: 0 out of 5\nWHAT YOU GOT RIGHT: N/A\nMISSING KEYWORDS: N/A\nMODEL ANSWER: The AI grading server is currently overloaded with free-tier traffic. Please wait a moment and try again.\nADVICE: Server busy."
+                return "MARKS: 0 out of 5\nWHAT YOU GOT RIGHT: N/A\nMISSING KEYWORDS: N/A\nMODEL ANSWER: The AI grading server is currently overloaded with free-tier traffic. Please wait a moment and click Verify again.\nADVICE: Server busy. Please try again later."
+
 @app.get("/")
 def root():
     return {"status": "MarksMind API is live"}
