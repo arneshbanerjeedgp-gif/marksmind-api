@@ -27,7 +27,7 @@ client = OpenAI(
     api_key=OPENROUTER_API_KEY
 )
 
-MODEL_ID = "openai/gpt-oss-120b:free"
+MODEL_ID = "meta-llama/llama-3.3-70b-instruct:free"
 
 # Load embedding model once at startup
 embedding_model = TextEmbedding("BAAI/bge-small-en-v1.5")
