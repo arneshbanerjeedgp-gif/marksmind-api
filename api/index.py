@@ -5,7 +5,7 @@ from supabase import create_client
 from openai import OpenAI
 from fastembed import TextEmbedding
 import os
-
+import time
 app = FastAPI()
 
 app.add_middleware(
@@ -102,11 +102,11 @@ def score_answer(question, student_answer, class_num, subject):
     ms_chunks = search_marking_scheme(question, class_num)
     ms_context = "\n\n".join([r['content'] for r in ms_chunks[:2]])
 
-    prompt = f"""You are a strict CBSE examiner for Class {class_num} {subject}.
-
-NCERT Textbook Content:
-{ncert_context}
-
+   response = client.chat.completions.create(
+        model=MODEL_ID,
+        messages=[{"role": "user", "content": prompt}]
+    )
+    return response.choices[0].message.content
 Official CBSE Marking Scheme:
 {ms_context}
 
@@ -121,12 +121,23 @@ MISSING KEYWORDS: (exact words CBSE expects)
 MODEL ANSWER: (perfect answer)
 ADVICE: (one line on what to fix)"""
 
-    response = client.chat.completions.create(
-        model=MODEL_ID,
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return response.choices[0].message.content
-
+    # 3-Attempt Retry Loop to fight OpenRouter Rate Limits
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model=MODEL_ID,
+                messages=[{"role": "user", "content": prompt}],
+                timeout=15 # Prevents hanging
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            print(f"⚠️ OpenRouter Error on attempt {attempt + 1}: {str(e)}")
+            if attempt < max_retries - 1:
+                print("Retrying in 2 seconds...")
+                time.sleep(2)
+            else:
+                return "MARKS: 0 out of 5\nWHAT YOU GOT RIGHT: N/A\nMISSING KEYWORDS: N/A\nMODEL ANSWER: The AI grading server is currently overloaded with free-tier traffic. Please wait a moment and try again.\nADVICE: Server busy."
 @app.get("/")
 def root():
     return {"status": "MarksMind API is live"}
