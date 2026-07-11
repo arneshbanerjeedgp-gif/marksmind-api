@@ -27,7 +27,7 @@ client = OpenAI(
     api_key=OPENROUTER_API_KEY
 )
 
-MODEL_ID = "google/gemini-2.5-pro"
+MODEL_ID = "google/gemma-2-9b-it:free"
 
 # Load embedding model once at startup
 embedding_model = TextEmbedding("BAAI/bge-small-en-v1.5")
