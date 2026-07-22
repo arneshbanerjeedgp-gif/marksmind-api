@@ -19,13 +19,13 @@ app.add_middleware(
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
+OPENROUTER_API_KEY = os.environ.get("AIROUTER_API_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 client = OpenAI(
-    base_url="https://openrouter.ai/api/v1",
-    api_key=OPENROUTER_API_KEY
+    base_url="https://api.airouter.in/v1
+    api_key=AIROUTER_API_KEY
 )
 
 # Using the ultra-fast Llama 3 model to avoid traffic jams
